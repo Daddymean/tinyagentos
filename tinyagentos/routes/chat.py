@@ -18,6 +18,17 @@ from tinyagentos.chat.reactions import maybe_trigger_semantic
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> asyncio.Task:
+    """Schedule a fire-and-forget coroutine, retaining a reference so it
+    cannot be GC'd before completion (RUF006)."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 async def _capture_user_memory(
     user_memory,
@@ -45,6 +56,20 @@ async def _capture_user_memory(
         )
     except Exception as e:  # pragma: no cover - capture is best-effort
         logger.debug(f"user memory capture failed: {e}")
+
+
+async def _beads_on_chat_message(app, channel: dict, message: dict) -> None:
+    """Best-effort hand-off to the Beads bridge. Never raises."""
+    bridge = getattr(app.state, "beads_bridge", None)
+    if bridge is None:
+        return
+    project_id = channel.get("project_id")
+    if not project_id:
+        return
+    try:
+        await bridge.on_chat_message(project_id, channel["id"], message)
+    except Exception:
+        logger.warning("beads on_chat_message failed", exc_info=True)
 
 
 @router.get("/api/docs/chat-guide")
@@ -100,10 +125,12 @@ async def chat_ws(websocket: WebSocket):
                 await hub.broadcast(data["channel_id"], {"type": "message", "seq": hub.next_seq(), **message})
 
                 router_svc = getattr(websocket.app.state, "agent_chat_router", None)
-                if router_svc is not None:
-                    channel = await ch_store.get_channel(data["channel_id"])
-                    if channel is not None:
-                        router_svc.dispatch(message, channel)
+                if _ws_channel is not None:
+                    if router_svc is not None:
+                        router_svc.dispatch(message, _ws_channel)
+                    _spawn_background(
+                        _beads_on_chat_message(websocket.app, _ws_channel, message)
+                    )
 
                 # Capture user message into user memory (async, non-blocking)
                 user_memory = getattr(websocket.app.state, "user_memory", None)
@@ -237,7 +264,8 @@ async def post_message(request: Request):
     stripped = content.lstrip()
     if stripped.startswith("/"):
         channel = await ch_store.get_channel(channel_id)
-        if channel and channel.get("type") != "dm":
+        _is_a2a = ((channel or {}).get("settings") or {}).get("kind") == "a2a"
+        if channel and channel.get("type") != "dm" and not _is_a2a:
             from tinyagentos.chat.mentions import parse_mentions
             members = list(channel.get("members") or [])
             mentions = parse_mentions(content, members)
@@ -333,10 +361,12 @@ async def post_message(request: Request):
             pass  # Never block chat for archive failures
 
     router_svc = getattr(request.app.state, "agent_chat_router", None)
-    if router_svc is not None:
-        channel = await ch_store.get_channel(channel_id)
-        if channel is not None:
-            router_svc.dispatch(message, channel)
+    if _http_channel is not None:
+        if router_svc is not None:
+            router_svc.dispatch(message, _http_channel)
+        _spawn_background(
+            _beads_on_chat_message(request.app, _http_channel, message)
+        )
 
     return message
 
