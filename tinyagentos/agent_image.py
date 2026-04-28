@@ -165,7 +165,10 @@ async def ensure_image_present(
         "agent_image: importing base image %s from %s (one-time bootstrap, ~300-500MB)",
         alias, import_url,
     )
-    tmp_fd, tmp_path = tempfile.mkstemp(prefix="taos-image-", suffix=".tar.gz")
+    tmp_dir = os.environ.get("TAOS_TMPDIR") or None
+    if tmp_dir:
+        os.makedirs(tmp_dir, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="taos-image-", suffix=".tar.gz", dir=tmp_dir)
     os.close(tmp_fd)
     try:
         try:
