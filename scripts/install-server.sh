@@ -412,8 +412,7 @@ if [[ -z "${TAOS_SKIP_QMD:-}" ]]; then
                 # Substitute the real user/group at install time. Prefer the
                 # invoking sudo user (so the service runs as them), falling
                 # back to 'root' if the script was run by root directly.
-                local taos_user="${SUDO_USER:-root}"
-                local taos_group
+                taos_user="${SUDO_USER:-root}"
                 taos_group=$(id -gn "$taos_user" 2>/dev/null || echo "$taos_user")
                 $local_sudo sed \
                     -e "s|__TAOS_USER__|${taos_user}|g" \
