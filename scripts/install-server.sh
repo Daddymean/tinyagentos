@@ -280,14 +280,17 @@ detect_and_advise_accelerators() {
         if (( rkllama_found )); then
             log "rknpu: device present + rkllama backend installed"
         else
-            warn "Rockchip NPU detected but rkllama is not installed"
-            warn "  controller will run without NPU acceleration until you install rkllama"
-            warn "  run: sudo bash scripts/install-rknpu.sh    (or set TAOS_RKNPU_SETUP=1 before re-running this installer to opt in automatically)"
-            warn "  see: https://github.com/notpunchnox/rkllama"
-            # Chained auto-install: if the caller opted in via env var,
-            # run scripts/install-rknpu.sh now so rkllama is already
-            # serving on :8080 before the controller systemd unit lands.
-            if [[ "${TAOS_RKNPU_SETUP:-}" == "1" || "${TAOS_RKNPU_SETUP:-}" == "true" ]]; then
+            log "Rockchip NPU detected — auto-installing the jaylfc/rkllama backend"
+            log "  (set TAOS_NO_RKNPU=1 to skip, or run install-rknpu.sh manually later)"
+            log "  fork: https://github.com/jaylfc/rkllama"
+            # Chained auto-install on by default for RK3588 hosts: if the
+            # NPU is present and rkllama isn't installed yet, set up our
+            # fork now so rkllama is already serving on :8080 before the
+            # controller systemd unit lands. Opt-out via TAOS_NO_RKNPU=1.
+            if [[ "${TAOS_NO_RKNPU:-}" == "1" || "${TAOS_NO_RKNPU:-}" == "true" ]]; then
+                warn "TAOS_NO_RKNPU=1 — skipping rkllama install; controller will run CPU-only on this NPU box"
+                warn "  to set up later: sudo bash scripts/install-rknpu.sh"
+            else
                 local rknpu_script=""
                 if [[ -x "$(dirname "$0")/install-rknpu.sh" ]]; then
                     rknpu_script="$(dirname "$0")/install-rknpu.sh"
@@ -295,12 +298,12 @@ detect_and_advise_accelerators() {
                     rknpu_script="$INSTALL_DIR/scripts/install-rknpu.sh"
                 fi
                 if [[ -n "$rknpu_script" ]]; then
-                    log "TAOS_RKNPU_SETUP=1 — chaining into $rknpu_script"
-                    TAOS_RKNPU_SETUP=1 sudo -E bash "$rknpu_script" --yes \
+                    log "chaining into $rknpu_script"
+                    sudo -E bash "$rknpu_script" --yes \
                         || warn "install-rknpu.sh failed — continuing controller install anyway"
                 else
-                    warn "TAOS_RKNPU_SETUP=1 but install-rknpu.sh not found locally yet"
-                    warn "  it will be available after the repo is cloned; run it then"
+                    warn "install-rknpu.sh not found locally yet — it will be after the repo is cloned"
+                    warn "  to set up rkllama then: sudo bash scripts/install-rknpu.sh"
                 fi
             fi
         fi
