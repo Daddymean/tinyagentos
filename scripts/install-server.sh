@@ -56,8 +56,17 @@ ensure_linux_deps() {
             libtorrent-rasterbar-dev libboost-python-dev sqlite3 libsqlcipher-dev
     elif command -v dnf >/dev/null 2>&1; then
         log "installing dnf deps (python3, git, curl, libtorrent, nodejs, sqlcipher)"
-        sudo dnf install -y -q python3 python3-pip python3-virtualenv git curl \
-            libtorrent-rasterbar-devel boost-python3-devel sqlite nodejs npm sqlcipher-devel
+        # rb_libtorrent: Fedora's libtorrent-rasterbar is split into the C++
+        # library (rb_libtorrent), its devel headers (rb_libtorrent-devel), and
+        # the Python bindings (rb_libtorrent-python3). The bindings are NOT on
+        # PyPI for Fedora's Python 3.14; install them as a system package and
+        # rely on --system-site-packages in the venv below.
+        # python3-virtualenv is intentionally omitted — `python3 -m venv` from
+        # stdlib is sufficient and avoids a name that's been renamed/removed
+        # across recent Fedora releases.
+        sudo dnf install -y -q python3 python3-pip git curl \
+            rb_libtorrent-devel rb_libtorrent-python3 boost-python3 \
+            sqlite nodejs npm sqlcipher-devel
     elif command -v pacman >/dev/null 2>&1; then
         log "installing pacman deps"
         sudo pacman -Sy --noconfirm --needed python python-pip git curl \
@@ -322,7 +331,16 @@ cd "$INSTALL_DIR"
 
 if [[ ! -d .venv ]]; then
     log "creating venv"
-    python3 -m venv .venv
+    # On distros that ship Python 3.14+ (Arch) or where libtorrent's Python
+    # binding is only available as a system package (Fedora — see dnf branch
+    # above), we need the venv to inherit system site-packages so `import
+    # libtorrent` resolves against the OS-installed binding. PyPI does not
+    # publish libtorrent wheels for 3.14 yet.
+    if command -v pacman >/dev/null 2>&1 || [[ -f /etc/fedora-release ]]; then
+        python3 -m venv --system-site-packages .venv
+    else
+        python3 -m venv .venv
+    fi
 fi
 
 log "installing controller python deps into .venv (pip install -e .)"
