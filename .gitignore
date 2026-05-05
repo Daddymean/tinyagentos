@@ -6,6 +6,8 @@ build/
 !mac/build/
 mac/launcher/.build/
 *.db
+*.sqlite3
+*.pem
 .superpowers/
 .worktrees/
 
