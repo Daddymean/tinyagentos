@@ -109,6 +109,51 @@ def _detect_charset(content_type: str, body: bytes) -> str:
     return label
 
 
+def _shell_origin(request: Request) -> str | None:
+    """Origin of the taOS shell that frames this proxied page.
+
+    The shell runs on the main port; the proxy serves from a separate
+    origin (the proxy port). For the iframe to load, the proxied page's
+    ``frame-ancestors`` must name the shell origin (same host, main port).
+
+    Returns ``scheme://host:main_port`` derived from the request host, or
+    ``None`` in single-port mode (proxy served from the main origin, where
+    ``frame-ancestors 'self'`` already covers it).
+    """
+    state = request.app.state
+    main_port = getattr(state, "main_port", None)
+    proxy_port = getattr(state, "browser_proxy_port", 0)
+    if not main_port or main_port == proxy_port:
+        return None
+    host = _strip_port(request.headers.get("host") or "")
+    if not host:
+        return None
+    # Behind a proxy, x-forwarded-proto may be a comma list ("https, http").
+    # Clamp to a known scheme so a hostile value can't deform the CSP.
+    scheme = (
+        request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+    ).split(",")[0].strip().lower()
+    if scheme not in ("http", "https"):
+        scheme = "http"
+    return f"{scheme}://{host}:{main_port}"
+
+
+def _strip_port(host_header: str) -> str:
+    """Return the host without its port, handling IPv6 literals.
+
+    ``example.com:6969`` → ``example.com``; ``[::1]:6969`` → ``[::1]``;
+    bare ``[::1]`` (no port) stays intact (a naive rsplit(":") would mangle it).
+    """
+    host = host_header.strip()
+    if not host:
+        return ""
+    if host.startswith("["):
+        # IPv6 literal: keep through the closing bracket, drop any :port after.
+        end = host.find("]")
+        return host[: end + 1] if end != -1 else host
+    return host.rsplit(":", 1)[0] if ":" in host else host
+
+
 @router.get("/api/desktop/browser/proxy")
 async def proxy_get(
     profile_id: str,
@@ -302,7 +347,7 @@ async def proxy_get(
                 )
             )
 
-        out_headers["content-security-policy"] = proxied_response_csp()
+        out_headers["content-security-policy"] = proxied_response_csp(_shell_origin(request))
         return Response(
             content=injected,
             status_code=response.status_code,
