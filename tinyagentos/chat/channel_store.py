@@ -71,7 +71,9 @@ def _parse_channel(row: tuple, description) -> dict:
             ch[field] = json.loads(ch[field])
     settings = ch.get("settings") or {}
     for key, default in PHASE1_DEFAULT_SETTINGS.items():
-        settings.setdefault(key, default if not isinstance(default, list) else list(default))
+        settings.setdefault(
+            key, default if not isinstance(default, list) else list(default)
+        )
     ch["settings"] = settings
     return ch
 
@@ -106,10 +108,16 @@ class ChatChannelStore(BaseStore):
                (id, name, type, description, topic, members, settings, created_by, created_at, last_message_at, project_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)""",
             (
-                ch_id, name, type, description, topic,
+                ch_id,
+                name,
+                type,
+                description,
+                topic,
                 json.dumps(members or []),
                 json.dumps(settings or {}),
-                created_by, now, project_id,
+                created_by,
+                now,
+                project_id,
             ),
         )
         await self._db.commit()
@@ -144,9 +152,9 @@ class ChatChannelStore(BaseStore):
         # archived filter — use JSON text search for speed (settings is stored as
         # a JSON string; the canonical marker is '"archived": true').
         if archived is True:
-            conditions.append('settings LIKE \'%"archived": true%\'')
+            conditions.append("settings LIKE '%\"archived\": true%'")
         elif archived is False:
-            conditions.append('(settings NOT LIKE \'%"archived": true%\')')
+            conditions.append("(settings NOT LIKE '%\"archived\": true%')")
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         sql = f"SELECT * FROM chat_channels {where} ORDER BY created_at ASC"
@@ -225,7 +233,9 @@ class ChatChannelStore(BaseStore):
         """Set or clear the channel's ephemeral TTL. None = disabled."""
         if seconds is not None:
             if not isinstance(seconds, (int, float)) or seconds < 0:
-                raise ValueError("ephemeral_ttl_seconds must be a non-negative number or null")
+                raise ValueError(
+                    "ephemeral_ttl_seconds must be a non-negative number or null"
+                )
             if seconds > 30 * 24 * 60 * 60:
                 raise ValueError("ephemeral_ttl_seconds must be <= 30 days")
         await self.set_settings(channel_id, {"ephemeral_ttl_seconds": seconds})
@@ -296,7 +306,9 @@ class ChatChannelStore(BaseStore):
         )
         await self._db.commit()
 
-    async def rewind_read_cursor(self, user_id: str, channel_id: str, before_ts: float) -> None:
+    async def rewind_read_cursor(
+        self, user_id: str, channel_id: str, before_ts: float
+    ) -> None:
         """Set last_read_at for this (user, channel) to before_ts.
 
         Used for mark-unread: caller passes msg.created_at - epsilon so
@@ -322,27 +334,27 @@ class ChatChannelStore(BaseStore):
         if not channel_ids:
             return {}
 
-        result: dict[str, int] = {}
-        for ch_id in channel_ids:
-            # Get user's last read time for this channel
-            async with self._db.execute(
-                "SELECT last_read_at FROM chat_read_positions WHERE user_id = ? AND channel_id = ?",
-                (user_id, ch_id),
-            ) as cursor:
-                pos_row = await cursor.fetchone()
-            last_read_at = pos_row[0] if pos_row else 0.0
+        placeholders = ",".join("?" for _ in channel_ids)
+        query = f"""
+            SELECT c.id, COUNT(m.id)
+            FROM chat_channels c
+            LEFT JOIN chat_read_positions p ON p.channel_id = c.id AND p.user_id = ?
+            LEFT JOIN chat_messages m ON m.channel_id = c.id AND m.created_at > COALESCE(p.last_read_at, 0.0)
+            WHERE c.id IN ({placeholders})
+            GROUP BY c.id
+        """
+        params = [user_id, *channel_ids]
+        async with self._db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
 
-            async with self._db.execute(
-                "SELECT COUNT(*) FROM chat_messages WHERE channel_id = ? AND created_at > ?",
-                (ch_id, last_read_at),
-            ) as cursor:
-                count_row = await cursor.fetchone()
-            result[ch_id] = count_row[0] if count_row else 0
+        result = {ch_id: 0 for ch_id in channel_ids}
+        result.update({row[0]: row[1] for row in rows})
         return result
 
     async def update_last_message_at(self, channel_id: str) -> None:
         now = time.time()
         await self._db.execute(
-            "UPDATE chat_channels SET last_message_at = ? WHERE id = ?", (now, channel_id)
+            "UPDATE chat_channels SET last_message_at = ? WHERE id = ?",
+            (now, channel_id),
         )
         await self._db.commit()
