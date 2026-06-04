@@ -66,11 +66,10 @@ class TrainingManager(BaseStore):
             ("thorough", "Thorough", "5 epochs, larger rank -- best quality, slower",
              {"epochs": 5, "lora_rank": 32, "lora_alpha": 64, "learning_rate": 5e-5, "batch_size": 2}),
         ]
-        for pid, name, desc, config in presets:
-            await self._db.execute(
-                "INSERT OR IGNORE INTO training_presets (id, name, description, config) VALUES (?, ?, ?, ?)",
-                (pid, name, desc, json.dumps(config)),
-            )
+        await self._db.executemany(
+            "INSERT OR IGNORE INTO training_presets (id, name, description, config) VALUES (?, ?, ?, ?)",
+            [(pid, name, desc, json.dumps(config)) for pid, name, desc, config in presets]
+        )
         await self._db.commit()
 
     async def create_job(self, base_model: str, agent_name: str | None = None,
