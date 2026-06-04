@@ -189,24 +189,35 @@ class MeshSync:
         if not records or table not in SYNCABLE_TABLES:
             return 0
 
-        ts_col = SYNCABLE_TABLES[table]
         imported = 0
 
-        for record in records:
-            columns = list(record.keys())
-            placeholders = ", ".join(["?"] * len(columns))
-            col_names = ", ".join(columns)
+        # We assume all records in the delta batch have the same schema.
+        # This is safe because they are exported from a SELECT * query.
+        columns = list(records[0].keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        col_names = ", ".join(columns)
 
-            # LWW: INSERT OR REPLACE (the newer record wins by timestamp)
-            try:
-                target_db.execute(
-                    f"INSERT OR REPLACE INTO {col_names} VALUES ({placeholders})",
-                    tuple(record[c] for c in columns),
-                )
-                imported += 1
-            except Exception as e:
-                # If schema mismatch, try column-by-column
-                logger.debug("Import failed for %s record: %s", table, e)
+        try:
+            target_db.executemany(
+                f"INSERT OR REPLACE INTO {table} ({col_names}) VALUES ({placeholders})",
+                [tuple(record.get(c) for c in columns) for record in records],
+            )
+            imported = len(records)
+        except Exception as e:
+            # Fallback to column-by-column if executemany fails (e.g. mixed schemas)
+            logger.debug("Batch import failed for %s: %s. Falling back to individual inserts.", table, e)
+            for record in records:
+                cols = list(record.keys())
+                pl = ", ".join(["?"] * len(cols))
+                cn = ", ".join(cols)
+                try:
+                    target_db.execute(
+                        f"INSERT OR REPLACE INTO {table} ({cn}) VALUES ({pl})",
+                        tuple(record[c] for c in cols),
+                    )
+                    imported += 1
+                except Exception as ex:
+                    logger.debug("Import failed for %s record: %s", table, ex)
 
         if imported:
             target_db.commit()
