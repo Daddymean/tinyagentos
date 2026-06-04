@@ -65,10 +65,7 @@ class TestEmojiPicker:
         expect(picker_dialog).to_be_visible(timeout=5000)
 
         # Search for "rocket" — emoji-picker-react renders a search input
-        # TODO: refine the aria-label/placeholder for the picker's search field
-        search_input = picker_dialog.get_by_role("searchbox")  # TODO: refine — may be type="search" without role
-        if search_input.count() == 0:
-            search_input = picker_dialog.locator("input[type='search']")
+        search_input = picker_dialog.locator("input[type='search']")
         search_input.wait_for(state="visible", timeout=5000)
         search_input.fill("rocket")
 
