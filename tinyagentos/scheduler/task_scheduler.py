@@ -52,12 +52,16 @@ class TaskScheduler(BaseStore):
 
     async def _post_init(self) -> None:
         # Seed default presets
-        for preset in DEFAULT_PRESETS:
-            await self._db.execute(
+        if DEFAULT_PRESETS:
+            preset_data = [
+                (preset["name"], preset.get("description", ""), json.dumps(preset["tasks"]))
+                for preset in DEFAULT_PRESETS
+            ]
+            await self._db.executemany(
                 "INSERT OR IGNORE INTO task_presets (name, description, tasks) VALUES (?, ?, ?)",
-                (preset["name"], preset["description"], json.dumps(preset["tasks"])),
+                preset_data,
             )
-        await self._db.commit()
+            await self._db.commit()
 
     async def add_task(self, name: str, schedule: str, command: str, agent_name: str | None = None, description: str = "") -> int:
         now = int(time.time())
