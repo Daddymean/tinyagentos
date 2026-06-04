@@ -322,22 +322,27 @@ class ChatChannelStore(BaseStore):
         if not channel_ids:
             return {}
 
-        result: dict[str, int] = {}
-        for ch_id in channel_ids:
-            # Get user's last read time for this channel
-            async with self._db.execute(
-                "SELECT last_read_at FROM chat_read_positions WHERE user_id = ? AND channel_id = ?",
-                (user_id, ch_id),
-            ) as cursor:
-                pos_row = await cursor.fetchone()
-            last_read_at = pos_row[0] if pos_row else 0.0
+        result: dict[str, int] = {ch_id: 0 for ch_id in channel_ids}
+        chunk_size = 900
+        for i in range(0, len(channel_ids), chunk_size):
+            chunk = channel_ids[i:i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
 
-            async with self._db.execute(
-                "SELECT COUNT(*) FROM chat_messages WHERE channel_id = ? AND created_at > ?",
-                (ch_id, last_read_at),
-            ) as cursor:
-                count_row = await cursor.fetchone()
-            result[ch_id] = count_row[0] if count_row else 0
+            query = f"""
+                SELECT m.channel_id, COUNT(m.id)
+                FROM chat_messages m
+                LEFT JOIN chat_read_positions p
+                  ON p.channel_id = m.channel_id AND p.user_id = ?
+                WHERE m.channel_id IN ({placeholders})
+                  AND m.created_at > COALESCE(p.last_read_at, 0.0)
+                GROUP BY m.channel_id
+            """
+            params = [user_id] + chunk
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                for row in rows:
+                    result[row[0]] = row[1]
+
         return result
 
     async def update_last_message_at(self, channel_id: str) -> None:
