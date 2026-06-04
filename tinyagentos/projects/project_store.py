@@ -64,16 +64,19 @@ class ProjectStore(BaseStore):
     SCHEMA = PROJECTS_SCHEMA
 
     async def _post_init(self) -> None:
+        changed = False
         for col_def in (
             "ALTER TABLE project_members ADD COLUMN can_edit_canvas INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE project_members ADD COLUMN is_lead INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 await self._db.execute(col_def)
-                await self._db.commit()
+                changed = True
             except Exception:
                 # Column already exists on fresh installs (created by SCHEMA).
                 pass
+        if changed:
+            await self._db.commit()
 
     async def set_member_lead(self, project_id: str, member_id: str, is_lead: bool) -> None:
         val = 1 if is_lead else 0
