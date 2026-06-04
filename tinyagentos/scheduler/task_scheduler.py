@@ -81,11 +81,22 @@ class TaskScheduler(BaseStore):
                      "last_run": r[7], "next_run": r[8]} for r in await cursor.fetchall()]
 
     async def update_task(self, task_id: int, **kwargs):
+        fields = []
+        params = []
         for field in ["name", "schedule", "command", "description"]:
             if field in kwargs:
-                await self._db.execute(f"UPDATE scheduled_tasks SET {field} = ? WHERE id = ?", (kwargs[field], task_id))
+                fields.append(f"{field} = ?")
+                params.append(kwargs[field])
         if "enabled" in kwargs:
-            await self._db.execute("UPDATE scheduled_tasks SET enabled = ? WHERE id = ?", (int(kwargs["enabled"]), task_id))
+            fields.append("enabled = ?")
+            params.append(int(kwargs["enabled"]))
+
+        if not fields:
+            return
+
+        params.append(task_id)
+        set_clause = ", ".join(fields)
+        await self._db.execute(f"UPDATE scheduled_tasks SET {set_clause} WHERE id = ?", params)
         await self._db.commit()
 
     async def delete_task(self, task_id: int) -> bool:
