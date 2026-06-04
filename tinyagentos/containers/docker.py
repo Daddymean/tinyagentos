@@ -1,11 +1,12 @@
 """Docker/Podman container backend using the docker CLI."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 
-from .backend import ContainerBackend, ContainerInfo, _parse_memory
+from .backend import ContainerBackend, ContainerInfo
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,9 @@ class DockerBackend(ContainerBackend):
     def __init__(self, binary: str = "docker") -> None:
         self.binary = binary
 
-    async def _run(self, cmd: list[str], timeout: int = 120) -> tuple[int, str]:
+    async def _run(
+        self, cmd: list[str], timeout: int = 120
+    ) -> tuple[int, str]:
         """Run a command and return (returncode, output)."""
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -29,13 +32,21 @@ class DockerBackend(ContainerBackend):
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return proc.returncode, stdout.decode() if stdout else ""
 
-    async def list_containers(self, prefix: str = "taos-agent-") -> list[ContainerInfo]:
+    async def list_containers(
+        self, prefix: str = "taos-agent-"
+    ) -> list[ContainerInfo]:
         """List all containers whose name starts with prefix."""
-        code, output = await self._run([
-            self.binary, "ps", "-a",
-            "--filter", f"name={prefix}",
-            "--format", "{{json .}}",
-        ])
+        code, output = await self._run(
+            [
+                self.binary,
+                "ps",
+                "-a",
+                "--filter",
+                f"name={prefix}",
+                "--format",
+                "{{json .}}",
+            ]
+        )
         if code != 0:
             logger.error(f"{self.binary} ps failed: {output}")
             return []
@@ -80,13 +91,15 @@ class DockerBackend(ContainerBackend):
                 except (json.JSONDecodeError, IndexError, KeyError):
                     pass
 
-            results.append(ContainerInfo(
-                name=name,
-                status=state,
-                ip=ip,
-                memory_mb=0,
-                cpu_cores=0,
-            ))
+            results.append(
+                ContainerInfo(
+                    name=name,
+                    status=state,
+                    ip=ip,
+                    memory_mb=0,
+                    cpu_cores=0,
+                )
+            )
         return results
 
     async def set_root_quota(self, name: str, size_gib: int) -> dict:
@@ -99,10 +112,16 @@ class DockerBackend(ContainerBackend):
         a soft note.
         """
         size_g = f"{size_gib}g"
-        code, output = await self._run([
-            self.binary, "container", "update",
-            "--storage-opt", f"size={size_g}", name,
-        ])
+        code, output = await self._run(
+            [
+                self.binary,
+                "container",
+                "update",
+                "--storage-opt",
+                f"size={size_g}",
+                name,
+            ]
+        )
         if code != 0:
             # Specific well-known message from overlay2 without pquota.
             no_support_markers = (
@@ -116,10 +135,16 @@ class DockerBackend(ContainerBackend):
                 logger.warning(
                     "set_root_quota: storage driver does not enforce quota for %s "
                     "(overlay2 without pquota?); treating as soft limit: %s",
-                    name, output.strip(),
+                    name,
+                    output.strip(),
                 )
-                return {"success": True, "note": "storage driver does not enforce quota"}
-            logger.warning("set_root_quota: docker update failed for %s: %s", name, output)
+                return {
+                    "success": True,
+                    "note": "storage driver does not enforce quota",
+                }
+            logger.warning(
+                "set_root_quota: docker update failed for %s: %s", name, output
+            )
             return {"success": False, "note": output}
         return {"success": True, "note": f"root quota set to {size_gib} GiB"}
 
@@ -144,8 +169,11 @@ class DockerBackend(ContainerBackend):
         on overlay2 without pquota this is accounting-only.
         """
         args = [
-            self.binary, "run", "-d",
-            "--name", name,
+            self.binary,
+            "run",
+            "-d",
+            "--name",
+            name,
         ]
         if memory_limit is not None:
             args += ["--memory", memory_limit]
@@ -166,7 +194,8 @@ class DockerBackend(ContainerBackend):
             if not quota_result["success"]:
                 logger.warning(
                     "create_container: root quota not applied for %s: %s",
-                    name, quota_result.get("note", ""),
+                    name,
+                    quota_result.get("note", ""),
                 )
 
         return {"success": True, "name": name}
@@ -175,20 +204,28 @@ class DockerBackend(ContainerBackend):
         self, name: str, cmd: list[str], timeout: int = 300
     ) -> tuple[int, str]:
         """Execute a command inside a container."""
-        return await self._run([self.binary, "exec", name] + cmd, timeout=timeout)
+        return await self._run(
+            [self.binary, "exec", name] + cmd, timeout=timeout
+        )
 
     async def push_file(
         self, name: str, local_path: str, remote_path: str
     ) -> tuple[int, str]:
         """Copy a file into a container."""
-        return await self._run([self.binary, "cp", local_path, f"{name}:{remote_path}"])
+        return await self._run(
+            [self.binary, "cp", local_path, f"{name}:{remote_path}"]
+        )
 
     async def start_container(self, name: str) -> dict:
         code, output = await self._run([self.binary, "start", name])
         return {"success": code == 0, "output": output}
 
     async def stop_container(self, name: str, force: bool = False) -> dict:
-        cmd = [self.binary, "kill", name] if force else [self.binary, "stop", name]
+        cmd = (
+            [self.binary, "kill", name]
+            if force
+            else [self.binary, "stop", name]
+        )
         code, output = await self._run(cmd)
         return {"success": code == 0, "output": output}
 
@@ -203,17 +240,29 @@ class DockerBackend(ContainerBackend):
 
     async def get_container_logs(self, name: str, lines: int = 100) -> str:
         """Get recent log output from a container."""
-        code, output = await self._run([
-            self.binary, "logs", name, "--tail", str(lines),
-        ])
+        code, output = await self._run(
+            [
+                self.binary,
+                "logs",
+                name,
+                "--tail",
+                str(lines),
+            ]
+        )
         return output if code == 0 else f"Error getting logs: {output}"
 
     async def rename_container(self, old_name: str, new_name: str) -> dict:
-        code, output = await self._run([self.binary, "rename", old_name, new_name])
+        code, output = await self._run(
+            [self.binary, "rename", old_name, new_name]
+        )
         return {"success": code == 0, "output": output}
 
     async def add_proxy_device(
-        self, name: str, device_name: str, listen: str, connect: str,
+        self,
+        name: str,
+        device_name: str,
+        listen: str,
+        connect: str,
         bind_mode: str | None = None,
     ) -> dict:
         # Docker containers reach the host via docker-provided networking
@@ -221,7 +270,10 @@ class DockerBackend(ContainerBackend):
         # proxy device equivalent; the deployer's docker path is expected
         # to choose a different TAOS_HOST default. Return success so the
         # deploy doesn't stall.
-        return {"success": True, "output": "proxy devices not supported on docker"}
+        return {
+            "success": True,
+            "output": "proxy devices not supported on docker",
+        }
 
     async def snapshot_create(self, name: str, snapshot_name: str) -> dict:
         """Create a named image snapshot via ``docker commit``.
@@ -232,7 +284,9 @@ class DockerBackend(ContainerBackend):
         currently supported (see ``snapshot_restore``).
         """
         image_tag = f"taos/{snapshot_name}:latest"
-        code, output = await self._run([self.binary, "commit", name, image_tag])
+        code, output = await self._run(
+            [self.binary, "commit", name, image_tag]
+        )
         return {"success": code == 0, "output": output}
 
     async def snapshot_restore(self, name: str, snapshot_name: str) -> dict:
@@ -252,16 +306,20 @@ class DockerBackend(ContainerBackend):
 
     async def snapshot_list(self, name: str) -> dict:
         """List committed snapshot images in the ``taos/`` namespace."""
-        code, output = await self._run([
-            self.binary, "images", "--format", "{{.Repository}}:{{.Tag}}",
-            "--filter", "reference=taos/*",
-        ])
+        code, output = await self._run(
+            [
+                self.binary,
+                "images",
+                "--format",
+                "{{.Repository}}:{{.Tag}}",
+                "--filter",
+                "reference=taos/*",
+            ]
+        )
         if code != 0:
             return {"success": False, "snapshots": [], "output": output}
         snapshots = [
-            line.strip()
-            for line in output.splitlines()
-            if line.strip()
+            line.strip() for line in output.splitlines() if line.strip()
         ]
         return {"success": True, "snapshots": snapshots, "output": output}
 
