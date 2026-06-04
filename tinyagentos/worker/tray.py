@@ -1,9 +1,11 @@
+"""System tray icon module for tinyagentos worker."""
+
+# pylint: disable=import-outside-toplevel,import-error
 from __future__ import annotations
 import asyncio
 import sys
 import threading
 import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 def create_icon_image(color=(76, 175, 80)):
     """Create a simple colored circle icon."""
     from PIL import Image, ImageDraw
+
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.ellipse([4, 4, 60, 60], fill=color)
@@ -45,14 +48,18 @@ def run_tray(controller_url: str, name: str | None = None):
         agent.stop()
         icon.stop()
 
-    def get_status():
-        return f"TinyAgentOS Worker: {agent.name}\n{status['text']}"
+    def open_dashboard(icon, item):
+        # pylint: disable=unused-argument
+        import webbrowser
+
+        webbrowser.open(controller_url)
 
     icon = pystray.Icon(
         "tinyagentos-worker",
         create_icon_image(),
         "TinyAgentOS Worker",
         menu=pystray.Menu(
+            Item("Open Dashboard", open_dashboard),
             Item(lambda text: f"Worker: {agent.name}", None, enabled=False),
             Item(lambda text: status["text"], None, enabled=False),
             pystray.Menu.SEPARATOR,
@@ -64,6 +71,7 @@ def run_tray(controller_url: str, name: str | None = None):
     if sys.platform == "darwin":
         try:
             import AppKit
+
             info = AppKit.NSBundle.mainBundle().infoDictionary()
             info["LSBackgroundOnly"] = "1"
         except ImportError:
