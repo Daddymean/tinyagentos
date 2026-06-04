@@ -89,9 +89,7 @@ class QmdDatabase:
     def delete_chunk(self, content_hash: str) -> None:
         conn = self._connect()
         try:
-            doc_ids = conn.execute("SELECT id FROM documents WHERE hash = ?", (content_hash,)).fetchall()
-            for row in doc_ids:
-                conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (row[0],))
+            conn.execute("DELETE FROM documents_fts WHERE rowid IN (SELECT id FROM documents WHERE hash = ?)", (content_hash,))
             conn.execute("DELETE FROM content_vectors WHERE hash = ?", (content_hash,))
             conn.execute("DELETE FROM documents WHERE hash = ?", (content_hash,))
             conn.execute("DELETE FROM content WHERE hash = ?", (content_hash,))
