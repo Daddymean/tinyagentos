@@ -6,6 +6,7 @@ Phase 12.6 — covers:
   - Walking to the Review step without picking an emoji and asserting the
     Review table shows "—" for the Emoji row.
 """
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -17,10 +18,14 @@ def _open_wizard_to_name_step(page: Page, base_url: str) -> None:
     page.get_by_role("button", name="Deploy Agent").click()
 
     # Wizard dialog
-    page.get_by_role("dialog", name="Deploy Agent").wait_for(state="visible")  # TODO: refine if aria-label differs
+    page.get_by_role("dialog", name="Deploy Agent").wait_for(
+        state="visible"
+    )  # TODO: refine if aria-label differs
 
     # Step 0: use Blank persona
-    page.get_by_role("button", name="Blank").click()  # TODO: refine — PersonaPicker uses role="tab" buttons
+    page.get_by_role(
+        "button", name="Blank"
+    ).click()  # TODO: refine — PersonaPicker uses role="tab" buttons
     page.get_by_role("button", name="Deploy with no persona →").click()
 
     # Advance to Name & Color (step 1)
@@ -65,16 +70,15 @@ class TestEmojiPicker:
         expect(picker_dialog).to_be_visible(timeout=5000)
 
         # Search for "rocket" — emoji-picker-react renders a search input
-        # TODO: refine the aria-label/placeholder for the picker's search field
-        search_input = picker_dialog.get_by_role("searchbox")  # TODO: refine — may be type="search" without role
-        if search_input.count() == 0:
-            search_input = picker_dialog.locator("input[type='search']")
+        search_input = picker_dialog.get_by_placeholder("Search")
         search_input.wait_for(state="visible", timeout=5000)
         search_input.fill("rocket")
 
         # Click the 🚀 emoji button
         # emoji-picker-react renders each emoji as a button with aria-label containing the name
-        rocket_btn = picker_dialog.get_by_role("button", name="rocket")  # TODO: refine — may be "🚀" or "Rocket"
+        rocket_btn = picker_dialog.get_by_role(
+            "button", name="rocket"
+        )  # TODO: refine — may be "🚀" or "Rocket"
         rocket_btn.wait_for(state="visible", timeout=5000)
         rocket_btn.first.click()
 
@@ -82,7 +86,9 @@ class TestEmojiPicker:
         expect(picker_dialog).not_to_be_visible(timeout=3000)
 
         # The trigger button now shows 🚀 as its text content
-        expect(picker_trigger).to_have_text("🚀", timeout=3000)  # TODO: refine — button text may include spaces
+        expect(picker_trigger).to_have_text(
+            "🚀", timeout=3000
+        )  # TODO: refine — button text may include spaces
 
     def test_review_shows_dash_when_no_emoji(self, page: Page, base_url: str):
         """Without picking an emoji, the Review step shows '—' for the Emoji row."""
@@ -93,7 +99,9 @@ class TestEmojiPicker:
 
         # Verify the trigger button still shows "+" (empty state)
         picker_trigger = page.get_by_label("Open emoji picker")
-        expect(picker_trigger).to_have_text("+", timeout=3000)  # TODO: refine — EmojiPickerField renders "+" when empty
+        expect(picker_trigger).to_have_text(
+            "+", timeout=3000
+        )  # TODO: refine — EmojiPickerField renders "+" when empty
 
         # Advance through remaining wizard steps to Review
         _advance_to_review(page)
@@ -103,7 +111,9 @@ class TestEmojiPicker:
         review_section = page.get_by_text("Review Configuration")
         if review_section.count() > 0:
             # Locate the Emoji value cell — the table maps ["Emoji", emoji.trim() || "—"]
-            emoji_value = page.locator("span").filter(has_text="—").first  # TODO: refine — need to scope to Emoji row
+            emoji_value = (
+                page.locator("span").filter(has_text="—").first
+            )  # TODO: refine — need to scope to Emoji row
             expect(emoji_value).to_be_visible(timeout=3000)
         else:
             # Could not reach Review (blocked on Framework/Model selection in CI).
