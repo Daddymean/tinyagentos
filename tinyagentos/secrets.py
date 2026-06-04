@@ -64,10 +64,10 @@ class SecretsStore(BaseStore):
     async def _post_init(self) -> None:
         await self._db.execute("PRAGMA foreign_keys = ON")
         # Seed default categories
-        for cat in DEFAULT_CATEGORIES:
-            await self._db.execute(
-                "INSERT OR IGNORE INTO secret_categories (name) VALUES (?)", (cat,)
-            )
+        await self._db.executemany(
+            "INSERT OR IGNORE INTO secret_categories (name) VALUES (?)",
+            [(cat,) for cat in DEFAULT_CATEGORIES],
+        )
         await self._db.commit()
 
     async def add(
@@ -86,11 +86,10 @@ class SecretsStore(BaseStore):
         )
         secret_id = cursor.lastrowid
         if agents:
-            for agent in agents:
-                await self._db.execute(
-                    "INSERT INTO secret_access (secret_id, agent_name) VALUES (?, ?)",
-                    (secret_id, agent),
-                )
+            await self._db.executemany(
+                "INSERT INTO secret_access (secret_id, agent_name) VALUES (?, ?)",
+                [(secret_id, agent) for agent in agents],
+            )
         await self._db.commit()
         return secret_id
 
@@ -170,11 +169,10 @@ class SecretsStore(BaseStore):
             await self._db.execute(
                 "DELETE FROM secret_access WHERE secret_id = ?", (secret["id"],)
             )
-            for agent in agents:
-                await self._db.execute(
-                    "INSERT INTO secret_access (secret_id, agent_name) VALUES (?, ?)",
-                    (secret["id"], agent),
-                )
+            await self._db.executemany(
+                "INSERT INTO secret_access (secret_id, agent_name) VALUES (?, ?)",
+                [(secret["id"], agent) for agent in agents],
+            )
         await self._db.commit()
         return True
 
