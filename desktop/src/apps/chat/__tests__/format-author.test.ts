@@ -4,6 +4,9 @@ import { displayAuthor, type AuthorContext } from "../format-author";
 const ctx: AuthorContext = {
   currentUserId: "t4QH4PpyCmY",
   currentUserDisplayName: "Jay",
+  userNames: {
+    "user123": "Alice",
+  },
 };
 
 describe("displayAuthor", () => {
@@ -15,8 +18,12 @@ describe("displayAuthor", () => {
     expect(displayAuthor({ author_id: "t4QH4PpyCmY", author_type: "user" }, ctx)).toBe("Jay");
   });
 
-  it("returns raw author_id for other user messages", () => {
+  it("returns raw author_id for other user messages when not in lookup table", () => {
     expect(displayAuthor({ author_id: "anotherHexId", author_type: "user" }, ctx)).toBe("anotherHexId");
+  });
+
+  it("returns display name for other user messages when in lookup table", () => {
+    expect(displayAuthor({ author_id: "user123", author_type: "user" }, ctx)).toBe("Alice");
   });
 
   it("returns agent slug for agent messages", () => {
