@@ -79,7 +79,7 @@ class TestEmojiPicker:
         expect(picker_dialog).not_to_be_visible(timeout=3000)
 
         # The trigger button now shows 🚀 as its text content
-        expect(picker_trigger).to_have_text("🚀", timeout=3000)  # TODO: refine — button text may include spaces
+        expect(picker_trigger).to_contain_text("🚀", timeout=3000)
 
     def test_review_shows_dash_when_no_emoji(self, page: Page, base_url: str):
         """Without picking an emoji, the Review step shows '—' for the Emoji row."""
