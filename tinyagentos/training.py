@@ -166,6 +166,8 @@ class TrainingManager(BaseStore):
             ]
 
     async def update_job(self, job_id: str, **kwargs):
+        set_clauses = []
+        values = []
         for field_name in [
             "status",
             "progress",
@@ -179,11 +181,15 @@ class TrainingManager(BaseStore):
                 value = kwargs[field_name]
                 if field_name == "metrics" and isinstance(value, dict):
                     value = json.dumps(value)
-                await self._db.execute(
-                    f"UPDATE training_jobs SET {field_name} = ? WHERE id = ?",
-                    (value, job_id),
-                )
-        await self._db.commit()
+                set_clauses.append(f"{field_name} = ?")
+                values.append(value)
+        if set_clauses:
+            values.append(job_id)
+            await self._db.execute(
+                f"UPDATE training_jobs SET {', '.join(set_clauses)} WHERE id = ?",
+                tuple(values),
+            )
+            await self._db.commit()
 
     async def delete_job(self, job_id: str) -> bool:
         cursor = await self._db.execute(
