@@ -132,6 +132,27 @@ class ProjectTaskStore(BaseStore):
                 return None
             return _row_to_task(row, cur.description)
 
+    async def has_cycle(self, start_task_id: str, target_task_id: str) -> bool:
+        """
+        Check if navigating the parent chain starting from `start_task_id`
+        ever reaches `target_task_id`.
+        Uses a recursive CTE with UNION to automatically avoid infinite loops
+        if pre-existing cycles exist in the DB.
+        """
+        query = """
+        WITH RECURSIVE parent_chain(id, parent_task_id) AS (
+            SELECT id, parent_task_id FROM project_tasks WHERE id = ?
+            UNION
+            SELECT t.id, t.parent_task_id
+            FROM project_tasks t
+            JOIN parent_chain p ON t.id = p.parent_task_id
+        )
+        SELECT 1 FROM parent_chain WHERE id = ?;
+        """
+        async with self._db.execute(query, (start_task_id, target_task_id)) as cur:
+            row = await cur.fetchone()
+            return row is not None
+
     async def list_tasks(
         self,
         project_id: str,
