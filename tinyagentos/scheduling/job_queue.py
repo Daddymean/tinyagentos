@@ -103,7 +103,7 @@ class JobQueue:
         self._conn.commit()
 
         # Load custom limits from config
-        for row in self._conn.execute("SELECT key, value FROM queue_config").fetchall():
+        for row in self._conn.execute("SELECT key, value FROM queue_config"):
             if row["key"].startswith("limit_"):
                 resource = row["key"][6:]
                 try:
@@ -165,7 +165,7 @@ class JobQueue:
         running = {}
         for row in self._conn.execute(
             "SELECT resource_type, COUNT(*) as n FROM jobs WHERE status = 'running' GROUP BY resource_type"
-        ).fetchall():
+        ):
             running[row["resource_type"]] = row["n"]
 
         # Find the next pending job whose resource type has capacity
@@ -313,13 +313,13 @@ class JobQueue:
         counts = {}
         for row in self._conn.execute(
             "SELECT status, COUNT(*) as n FROM jobs GROUP BY status"
-        ).fetchall():
+        ):
             counts[row["status"]] = row["n"]
 
         running_by_resource = {}
         for row in self._conn.execute(
             "SELECT resource_type, COUNT(*) as n FROM jobs WHERE status = 'running' GROUP BY resource_type"
-        ).fetchall():
+        ):
             running_by_resource[row["resource_type"]] = row["n"]
 
         return {
