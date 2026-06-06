@@ -122,9 +122,26 @@ class SecretsStore(BaseStore):
         sql += " ORDER BY category, name"
         async with self._db.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
+        if not rows:
+            return []
+
+        secret_ids = [r[0] for r in rows]
+        agents_by_secret = {sid: [] for sid in secret_ids}
+
+        chunk_size = 900
+        for i in range(0, len(secret_ids), chunk_size):
+            chunk = secret_ids[i : i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            async with self._db.execute(
+                f"SELECT secret_id, agent_name FROM secret_access WHERE secret_id IN ({placeholders})",
+                chunk,
+            ) as cursor:
+                access_rows = await cursor.fetchall()
+                for secret_id, agent_name in access_rows:
+                    agents_by_secret[secret_id].append(agent_name)
+
         results = []
         for r in rows:
-            agents = await self._get_agents(r[0])
             results.append(
                 {
                     "id": r[0],
@@ -133,7 +150,7 @@ class SecretsStore(BaseStore):
                     "description": r[3],
                     "created_at": r[4],
                     "updated_at": r[5],
-                    "agents": agents,
+                    "agents": agents_by_secret[r[0]],
                 }
             )
         return results
@@ -209,7 +226,9 @@ class SecretsStore(BaseStore):
         async with self._db.execute(
             "SELECT name, description FROM secret_categories ORDER BY name"
         ) as cursor:
-            return [{"name": r[0], "description": r[1]} for r in await cursor.fetchall()]
+            return [
+                {"name": r[0], "description": r[1]} for r in await cursor.fetchall()
+            ]
 
     async def _get_agents(self, secret_id: int) -> list[str]:
         async with self._db.execute(
