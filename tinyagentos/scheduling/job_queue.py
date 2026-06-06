@@ -57,33 +57,33 @@ CREATE TABLE IF NOT EXISTS queue_config (
 """
 
 # Job types
-JOB_EMBED = "embed"              # Embed text into vector memory
-JOB_EXTRACT = "extract"          # LLM fact extraction
-JOB_ENRICH = "enrich"            # LLM session enrichment
+JOB_EMBED = "embed"  # Embed text into vector memory
+JOB_EXTRACT = "extract"  # LLM fact extraction
+JOB_ENRICH = "enrich"  # LLM session enrichment
 JOB_CRYSTALLIZE = "crystallize"  # LLM crystal digest
-JOB_SPLIT = "split"              # Session splitter (CPU-only, fast)
-JOB_INDEX = "index"              # Full pipeline index_day
-JOB_REBUILD = "rebuild"          # Full catalog rebuild
+JOB_SPLIT = "split"  # Session splitter (CPU-only, fast)
+JOB_INDEX = "index"  # Full pipeline index_day
+JOB_REBUILD = "rebuild"  # Full catalog rebuild
 
 # Resource types — what the job needs
-RESOURCE_CPU = "cpu"       # CPU-bound (splitting, regex extraction)
-RESOURCE_GPU = "gpu"       # GPU-bound (LLM on GPU worker)
-RESOURCE_NPU = "npu"       # NPU-bound (embedding on RK3588, LLM on rkllama)
-RESOURCE_EMBED = "embed"   # Embedding model (ONNX or NPU)
+RESOURCE_CPU = "cpu"  # CPU-bound (splitting, regex extraction)
+RESOURCE_GPU = "gpu"  # GPU-bound (LLM on GPU worker)
+RESOURCE_NPU = "npu"  # NPU-bound (embedding on RK3588, LLM on rkllama)
+RESOURCE_EMBED = "embed"  # Embedding model (ONNX or NPU)
 
 
 class Priority(IntEnum):
-    BACKGROUND = 0   # Overnight maintenance, rebuilds
-    NORMAL = 1       # Scheduled cron jobs
-    URGENT = 2       # User-triggered from UI
+    BACKGROUND = 0  # Overnight maintenance, rebuilds
+    NORMAL = 1  # Scheduled cron jobs
+    URGENT = 2  # User-triggered from UI
 
 
 # Default concurrency limits per resource type
 DEFAULT_LIMITS = {
-    RESOURCE_CPU: 2,     # 2 CPU jobs in parallel (Pi has 4x A76 + 4x A55)
-    RESOURCE_GPU: 1,     # 1 GPU job at a time
-    RESOURCE_NPU: 3,     # 3 NPU jobs in parallel (RK3588 has 3 NPU cores)
-    RESOURCE_EMBED: 1,   # 1 embedding job at a time (shared model instance)
+    RESOURCE_CPU: 2,  # 2 CPU jobs in parallel (Pi has 4x A76 + 4x A55)
+    RESOURCE_GPU: 1,  # 1 GPU job at a time
+    RESOURCE_NPU: 3,  # 3 NPU jobs in parallel (RK3588 has 3 NPU cores)
+    RESOURCE_EMBED: 1,  # 1 embedding job at a time (shared model instance)
 }
 
 
@@ -145,8 +145,16 @@ class JobQueue:
             """INSERT INTO jobs (id, job_type, priority, status, agent_name,
                payload_json, resource_type, estimated_seconds, created_at)
                VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)""",
-            (job_id, job_type, priority, agent_name,
-             json.dumps(payload or {}), resource_type, estimated_seconds, now),
+            (
+                job_id,
+                job_type,
+                priority,
+                agent_name,
+                json.dumps(payload or {}),
+                resource_type,
+                estimated_seconds,
+                now,
+            ),
         )
         self._conn.commit()
         return job_id
@@ -168,6 +176,18 @@ class JobQueue:
         ).fetchall():
             running[row["resource_type"]] = row["n"]
 
+        # Determine which resource types are at capacity
+        at_capacity = []
+        # Check all resources configured in limits
+        for res, limit in self._limits.items():
+            if running.get(res, 0) >= limit:
+                at_capacity.append(res)
+        # Also check any resources that are running but have no explicit limit configured
+        # (they default to a limit of 1)
+        for res, count in running.items():
+            if res not in self._limits and count >= 1:
+                at_capacity.append(res)
+
         # Find the next pending job whose resource type has capacity
         query = "SELECT * FROM jobs WHERE status = 'pending'"
         params: list = []
@@ -175,26 +195,24 @@ class JobQueue:
             placeholders = ",".join("?" * len(resource_types))
             query += f" AND resource_type IN ({placeholders})"
             params.extend(resource_types)
+
+        if at_capacity:
+            placeholders = ",".join("?" * len(at_capacity))
+            query += f" AND resource_type NOT IN ({placeholders})"
+            params.extend(at_capacity)
+
         query += " ORDER BY priority DESC, created_at ASC LIMIT 1"
 
-        candidates = self._conn.execute(query, params).fetchall()
-        for row in candidates:
-            resource = row["resource_type"]
-            limit = self._limits.get(resource, 1)
-            current = running.get(resource, 0)
-            if current < limit:
-                # Claim the job
-                now = time.time()
-                self._conn.execute(
-                    "UPDATE jobs SET status = 'running', started_at = ? WHERE id = ?",
-                    (now, row["id"]),
-                )
-                self._conn.commit()
-                # Re-fetch to get updated status
-                claimed = self._conn.execute(
-                    "SELECT * FROM jobs WHERE id = ?", (row["id"],)
-                ).fetchone()
-                return dict(claimed)
+        row = self._conn.execute(query, params).fetchone()
+        if row:
+            # Claim the job
+            now = time.time()
+            claimed = self._conn.execute(
+                "UPDATE jobs SET status = 'running', started_at = ? WHERE id = ? RETURNING *",
+                (now, row["id"]),
+            ).fetchone()
+            self._conn.commit()
+            return dict(claimed)
 
         return None
 
@@ -236,7 +254,9 @@ class JobQueue:
     # ------------------------------------------------------------------
 
     async def get_job(self, job_id: str) -> dict | None:
-        row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT * FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
         return dict(row) if row else None
 
     async def pending_count(self, agent_name: str | None = None) -> int:
@@ -246,7 +266,9 @@ class JobQueue:
                 (agent_name,),
             ).fetchone()
         else:
-            row = self._conn.execute("SELECT COUNT(*) as n FROM jobs WHERE status = 'pending'").fetchone()
+            row = self._conn.execute(
+                "SELECT COUNT(*) as n FROM jobs WHERE status = 'pending'"
+            ).fetchone()
         return row["n"]
 
     async def running_jobs(self) -> list[dict]:
