@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from tinyagentos.base_store import BaseStore
 
@@ -60,14 +59,16 @@ class RelationshipManager(BaseStore):
             groups = []
             for r in await cursor.fetchall():
                 members = await self._get_group_members(r[0])
-                groups.append({
-                    "id": r[0],
-                    "name": r[1],
-                    "description": r[2],
-                    "lead_agent": r[3],
-                    "color": r[4],
-                    "members": members,
-                })
+                groups.append(
+                    {
+                        "id": r[0],
+                        "name": r[1],
+                        "description": r[2],
+                        "lead_agent": r[3],
+                        "color": r[4],
+                        "members": members,
+                    }
+                )
             return groups
 
     async def delete_group(self, group_id: int) -> bool:
@@ -78,18 +79,26 @@ class RelationshipManager(BaseStore):
         return cursor.rowcount > 0
 
     async def update_group(self, group_id: int, **kwargs):
+        fields_to_update = []
+        values = []
         for field in ["name", "description", "lead_agent", "color"]:
             if field in kwargs:
-                await self._db.execute(
-                    f"UPDATE agent_groups SET {field} = ? WHERE id = ?",
-                    (kwargs[field], group_id),
-                )
+                fields_to_update.append(f"{field} = ?")
+                values.append(kwargs[field])
+
+        if not fields_to_update:
+            return
+
+        values.append(group_id)
+        set_clause = ", ".join(fields_to_update)
+        await self._db.execute(
+            f"UPDATE agent_groups SET {set_clause} WHERE id = ?",
+            tuple(values),
+        )
         await self._db.commit()
 
     # Members
-    async def add_member(
-        self, group_id: int, agent_name: str, role: str = "member"
-    ):
+    async def add_member(self, group_id: int, agent_name: str, role: str = "member"):
         await self._db.execute(
             "INSERT OR REPLACE INTO group_members (group_id, agent_name, role) VALUES (?, ?, ?)",
             (group_id, agent_name, role),
@@ -129,10 +138,7 @@ class RelationshipManager(BaseStore):
             "SELECT agent_name, role FROM group_members WHERE group_id = ?",
             (group_id,),
         ) as cursor:
-            return [
-                {"agent_name": r[0], "role": r[1]}
-                for r in await cursor.fetchall()
-            ]
+            return [{"agent_name": r[0], "role": r[1]} for r in await cursor.fetchall()]
 
     # Permissions
     async def set_permission(
