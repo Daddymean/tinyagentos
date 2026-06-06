@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import shlex
 import os
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
+
 
 class ExecRequest(BaseModel):
     command: str
@@ -75,6 +77,7 @@ class McpToolRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def create_bridge_app(
     app_id: str | None = None,
@@ -176,11 +179,13 @@ def create_bridge_app(
                     size = stat.st_size if child.is_file() else 0
                 except OSError:
                     size = 0
-                entries.append({
-                    "name": child.name,
-                    "is_dir": child.is_dir(),
-                    "size": size,
-                })
+                entries.append(
+                    {
+                        "name": child.name,
+                        "is_dir": child.is_dir(),
+                        "size": size,
+                    }
+                )
             return {"entries": entries}
         except Exception as exc:
             return {"entries": [], "error": str(exc)}
@@ -205,10 +210,15 @@ def create_bridge_app(
 
     @bridge.post("/files/batch")
     async def files_batch(req: FileBatchRequest):
-        """Batch file ops are shell commands — delegate to exec."""
+        """Batch file ops — parsed securely to avoid shell injection."""
         try:
-            proc = await asyncio.create_subprocess_shell(
-                req.command,
+            args = shlex.split(req.command)
+            if not args:
+                return {"exit_code": -1, "stdout": "", "stderr": "Empty command"}
+
+            proc = await asyncio.create_subprocess_exec(
+                args[0],
+                *args[1:],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -275,7 +285,8 @@ def create_bridge_app(
             if proc.returncode != 0:
                 return {
                     "status": "error",
-                    "error": stderr.decode(errors="replace").strip() or "xdotool failed",
+                    "error": stderr.decode(errors="replace").strip()
+                    or "xdotool failed",
                 }
             return {"status": "ok"}
         except FileNotFoundError:
@@ -296,7 +307,8 @@ def create_bridge_app(
             if proc.returncode != 0:
                 return {
                     "status": "error",
-                    "error": stderr.decode(errors="replace").strip() or "xdotool failed",
+                    "error": stderr.decode(errors="replace").strip()
+                    or "xdotool failed",
                 }
             return {"status": "ok"}
         except FileNotFoundError:
@@ -316,7 +328,8 @@ def create_bridge_app(
             if proc.returncode != 0:
                 return {
                     "status": "error",
-                    "error": stderr.decode(errors="replace").strip() or "xdotool failed",
+                    "error": stderr.decode(errors="replace").strip()
+                    or "xdotool failed",
                 }
             return {"status": "ok"}
         except FileNotFoundError:

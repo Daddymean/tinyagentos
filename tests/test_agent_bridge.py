@@ -99,3 +99,34 @@ async def test_files_list(client):
     data = resp.json()
     assert "entries" in data
     assert isinstance(data["entries"], list)
+
+
+@pytest.mark.asyncio
+async def test_files_batch_valid_command(client):
+    resp = await client.post("/files/batch", json={"command": "echo hello"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["exit_code"] == 0
+    assert "hello" in data["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_files_batch_no_shell_injection(client):
+    # If the command is executed in a shell, it will run both commands and stdout will contain "hello" and "injected".
+    # Since we use create_subprocess_exec and shlex.split, "&&" and "echo" and "injected" will just be arguments to "echo".
+    resp = await client.post(
+        "/files/batch", json={"command": "echo hello && echo injected"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["exit_code"] == 0
+    assert "hello && echo injected" in data["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_files_batch_empty_command(client):
+    resp = await client.post("/files/batch", json={"command": "   "})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["exit_code"] == -1
+    assert "Empty command" in data["stderr"]
