@@ -1,0 +1,15 @@
+INFO:     Started server process [185228]
+INFO:     Waiting for application startup.
+backend local-openllm skipped — missing url or models (type=openai-compatible)
+backend local-mlc-llm skipped — missing url or models (type=openai-compatible)
+LiteLLM not installed — proxy disabled. Install with: pip install litellm[proxy]
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:6969 (Press CTRL+C to quit)
+agent_image: import failed for taos-openclaw-base: [Errno 2] No such file or directory
+Worker 'local' marked offline (no heartbeat for 30s)
+INFO:     127.0.0.1:43756 - "GET /auth/setup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43756 - "GET /agents HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:43756 - "GET /auth/setup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43762 - "GET /auth/setup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43762 - "GET /agents HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:43762 - "GET /auth/setup HTTP/1.1" 200 OK

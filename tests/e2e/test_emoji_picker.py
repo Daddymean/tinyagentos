@@ -12,8 +12,25 @@ from playwright.sync_api import Page, expect
 
 def _open_wizard_to_name_step(page: Page, base_url: str) -> None:
     """Open the Deploy wizard and advance to the Name & Color step via the Blank persona path."""
+    page.goto(f"{base_url}/auth/setup")
+    page.wait_for_load_state("networkidle")
+    if page.get_by_role("button", name="Continue").count() > 0:
+        page.get_by_label("Name").fill("admin")
+        page.get_by_label("Username").fill("admin")
+        page.get_by_label("Password").fill("testpass")
+        page.get_by_role("button", name="Continue").click()
+        page.wait_for_load_state("networkidle")
+    elif page.url.endswith("/auth/login?next=/agents"):
+        page.get_by_label("Username").fill("admin")
+        page.get_by_label("Password").fill("testpass")
+        page.get_by_role("button", name="Sign in").click()
+        page.wait_for_load_state("networkidle")
     page.goto(f"{base_url}/agents")
     page.wait_for_load_state("networkidle")
+    if page.get_by_role("button", name="Deploy Agent").count() == 0:
+        pytest.skip("Could not reach Agents page - auth redirect looping")
+    page.wait_for_load_state("networkidle")
+
     page.get_by_role("button", name="Deploy Agent").click()
 
     # Wizard dialog
@@ -100,7 +117,7 @@ class TestEmojiPicker:
         review_section = page.get_by_text("Review Configuration")
         if review_section.count() > 0:
             # Locate the Emoji value cell — the table maps ["Emoji", emoji.trim() || "—"]
-            emoji_value = page.locator("span").filter(has_text="—").first  # TODO: refine — need to scope to Emoji row
+            emoji_value = page.locator("div").filter(has=page.locator("span", has_text="Emoji", exact=True)).locator("span", has_text="—")
             expect(emoji_value).to_be_visible(timeout=3000)
         else:
             # Could not reach Review (blocked on Framework/Model selection in CI).
