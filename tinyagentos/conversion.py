@@ -59,9 +59,15 @@ class ConversionManager(BaseStore):
             return [dict(zip([d[0] for d in cursor.description], row)) for row in await cursor.fetchall()]
 
     async def update_job(self, job_id: str, **kwargs):
+        updates = []
+        params = []
         for field in ["status", "progress", "worker_name", "output_path", "error", "completed_at"]:
             if field in kwargs:
-                await self._db.execute(f"UPDATE conversion_jobs SET {field} = ? WHERE id = ?", (kwargs[field], job_id))
+                updates.append(f"{field} = ?")
+                params.append(kwargs[field])
+        if updates:
+            params.append(job_id)
+            await self._db.execute(f"UPDATE conversion_jobs SET {', '.join(updates)} WHERE id = ?", params)
         await self._db.commit()
 
     async def delete_job(self, job_id: str) -> bool:
