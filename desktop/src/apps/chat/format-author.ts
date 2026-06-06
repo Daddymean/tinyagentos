@@ -1,6 +1,7 @@
 export interface AuthorContext {
   currentUserId: string | null;
   currentUserDisplayName: string | null;
+  userNames?: Record<string, string>;
 }
 
 export function displayAuthor(
@@ -12,7 +13,10 @@ export function displayAuthor(
     if (msg.author_id === ctx.currentUserId && ctx.currentUserDisplayName) {
       return ctx.currentUserDisplayName;
     }
-    return msg.author_id; // TODO: multi-user lookup table
+    if (ctx.userNames && ctx.userNames[msg.author_id]) {
+      return ctx.userNames[msg.author_id] || msg.author_id;
+    }
+    return msg.author_id;
   }
   return msg.author_id; // agent slug
 }
