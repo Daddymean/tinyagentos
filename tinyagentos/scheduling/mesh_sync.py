@@ -204,20 +204,39 @@ class MeshSync:
             )
             imported = len(records)
         except Exception as e:
-            # Fallback to column-by-column if executemany fails (e.g. mixed schemas)
-            logger.debug("Batch import failed for %s: %s. Falling back to individual inserts.", table, e)
+            # Fallback to schema-grouped batch inserts if executemany fails (e.g. mixed schemas)
+            logger.debug("Batch import failed for %s: %s. Falling back to schema-grouped batch inserts.", table, e)
+            from collections import defaultdict
+            schema_groups = defaultdict(list)
             for record in records:
-                cols = list(record.keys())
+                # We sort keys to ensure identical schemas map to the same tuple regardless of dict order
+                cols = tuple(sorted(record.keys()))
+                schema_groups[cols].append(tuple(record[c] for c in cols))
+
+            for cols, values_list in schema_groups.items():
                 pl = ", ".join(["?"] * len(cols))
                 cn = ", ".join(cols)
-                try:
-                    target_db.execute(
-                        f"INSERT OR REPLACE INTO {table} ({cn}) VALUES ({pl})",
-                        tuple(record[c] for c in cols),
-                    )
-                    imported += 1
-                except Exception as ex:
-                    logger.debug("Import failed for %s record: %s", table, ex)
+
+                chunk_size = 900
+                for i in range(0, len(values_list), chunk_size):
+                    chunk = values_list[i:i + chunk_size]
+                    try:
+                        target_db.executemany(
+                            f"INSERT OR REPLACE INTO {table} ({cn}) VALUES ({pl})",
+                            chunk,
+                        )
+                        imported += len(chunk)
+                    except Exception:
+                        # Final fallback to individual inserts if a chunk still fails
+                        for values in chunk:
+                            try:
+                                target_db.execute(
+                                    f"INSERT OR REPLACE INTO {table} ({cn}) VALUES ({pl})",
+                                    values,
+                                )
+                                imported += 1
+                            except Exception as ex2:
+                                logger.debug("Import failed for %s record: %s", table, ex2)
 
         if imported:
             target_db.commit()
