@@ -8,7 +8,6 @@ Phase 12.1 — covers the three persona paths through the Deploy wizard:
 Selectors are ARIA-first; lines marked # TODO: refine need tuning
 against a live instance.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 # ---------------------------------------------------------------------------
@@ -127,7 +126,7 @@ class TestPersonaDeploy:
         _open_wizard(page, base_url)
 
         # Switch to Blank tab
-        page.get_by_role("button", name="Blank").click()  # TODO: refine — PersonaPicker uses role="tab" buttons
+        page.get_by_role("tab", name="Blank").click()  # TODO: refine — PersonaPicker uses role="tab" buttons
 
         # PersonaBlank renders: "Deploy with no persona →"
         use_blank = page.get_by_role("button", name="Deploy with no persona →")

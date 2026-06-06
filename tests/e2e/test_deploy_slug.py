@@ -6,7 +6,6 @@ Phase 12.2 — covers:
   - Typing an invalid slug shows a validation error
   - Correcting the slug clears the error
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 
@@ -19,7 +18,7 @@ def _open_wizard_to_name_step(page: Page, base_url: str) -> None:
     page.get_by_role("dialog", name="Deploy Agent").wait_for(state="visible")  # TODO: refine if aria-label differs
 
     # Step 0: pick Blank persona so we can advance
-    page.get_by_role("button", name="Blank").click()  # TODO: refine role — PersonaPicker uses role="tab"
+    page.get_by_role("tab", name="Blank").click()  # TODO: refine role — PersonaPicker uses role="tab"
     page.get_by_role("button", name="Deploy with no persona →").click()
 
     # Advance to Name & Color step
