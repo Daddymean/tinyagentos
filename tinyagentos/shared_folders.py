@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 import shutil
 import time
 from pathlib import Path
@@ -48,10 +46,9 @@ class SharedFolderManager(BaseStore):
             (name, description, owner_type, owner_name, now))
         folder_id = cursor.lastrowid
         if agents:
-            for agent in agents:
-                await self._db.execute(
-                    "INSERT INTO folder_access (folder_id, agent_name, permission) VALUES (?, ?, 'readwrite')",
-                    (folder_id, agent))
+            await self._db.executemany(
+                "INSERT INTO folder_access (folder_id, agent_name, permission) VALUES (?, ?, 'readwrite')",
+                [(folder_id, agent) for agent in agents])
         await self._db.commit()
         # Create physical directory
         (self.storage_dir / name).mkdir(exist_ok=True)
